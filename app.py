@@ -1,60 +1,60 @@
 # -*- coding: utf-8 -*-
-import requests, time, sys
-import pandas as pd
+import asyncio, httpx, pandas as pd, numpy as np
 import warnings
-import urllib3
 
-urllib3.disable_warnings()
 warnings.filterwarnings('ignore')
 
-# 🔧 AYARLAR
+# 🔧 SENİN STRATEJİNİN PARAMETRELERİ (Özetlenmiş)
 SETTINGS = {
-    "rsi_period": 14, "ema_period": 20, "mom_period": 9,
-    "vol_ma_period": 20, "atr_period": 14, "base_olasilik": 65.0
+    "rsi_period": 14, "ema_period": 20, "vol_ma_period": 20,
+    "tavan_breakout_pct": 0.5, "atr_mult": 2.0
 }
 
-# 🌐 API İSTEK FONKSİYONU (HATA KORUMALI)
-def get_stock_data(symbol, timeframe="1h"):
-    try:
-        # Timeout eklendi (5 saniye)
-        url = f"https://api.mexc.com/api/v3/klines?symbol={symbol}&interval={timeframe}&limit=50"
-        r = requests.get(url, timeout=5, verify=False)
-        if r.status_code != 200: return None
-        data = r.json()
-        if not isinstance(data, list): return None
-        return pd.DataFrame([float(k[4]) for k in data], columns=['Close'])
-    except: return None
+# 📊 TEKNİK GÖSTERGELER (Hızlı hesaplama için)
+def check_signals(df):
+    if len(df) < 30: return None
+    close = df['Close']
+    rsi = 100 - (100 / (1 + (close.diff().clip(lower=0).rolling(14).mean() / 
+                              close.diff().clip(upper=0).abs().rolling(14).mean())))
+    # Örnek: Tavan veya RSI şartı
+    if rsi.iloc[-1] < 30: return "RSI_ASIRI_SATIM"
+    return None
 
-def get_symbols():
+# 🚀 ASENKRON TARAMA
+async def scan_coin(client, symbol):
     try:
-        r = requests.get("https://api.mexc.com/api/v3/ticker/24hr", timeout=10, verify=False)
-        return [t['symbol'] for t in r.json() if t['symbol'].endswith('USDT')][:100] # Hız için ilk 100
-    except: return []
+        url = f"https://api.mexc.com/api/v3/klines?symbol={symbol}&interval=1h&limit=50"
+        response = await client.get(url, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            df = pd.DataFrame([float(k[4]) for k in data], columns=['Close'])
+            signal = check_signals(df)
+            if signal: return symbol, signal
+    except: pass
+    return None, None
 
-# 🚀 TARA VE ÇIKIŞ YAP (DÖNGÜSÜZ)
-def run_scanner():
-    print("🚀 Tarama başlatılıyor...")
-    symbols = get_symbols()
-    found_signals = 0
+async def main():
+    # 1. Sembolleri çek
+    symbols_raw = await httpx.get("https://api.mexc.com/api/v3/ticker/24hr")
+    symbols = [t['symbol'] for t in symbols_raw.json() if t['symbol'].endswith('USDT')]
     
-    for sym in symbols:
-        print(f"🔍 Taranıyor: {sym}")
-        df = get_stock_data(sym)
-        
-        if df is not None and len(df) > 20:
-            # Basit bir örnek koşul
-            last_close = df['Close'].iloc[-1]
-            sma = df['Close'].rolling(20).mean().iloc[-1]
-            if last_close > sma:
-                print(f"✅ Sinyal Bulundu: {sym} (Fiyat: {last_close})")
-                found_signals += 1
-        
-        # API ban yememek için gecikme
-        time.sleep(0.3) 
+    print(f"🔍 {len(symbols)} coin taraması başlıyor...")
     
-    print(f"🏁 Tarama tamamlandı. Toplam {found_signals} sinyal bulundu.")
-    # GitHub Action'ın başarıyla bitmesi için çıkış yapıyoruz
-    sys.exit(0)
+    # 2. Hız Sınırlayıcı (API Ban yememek için 50'şerli paketler)
+    semaphore = asyncio.Semaphore(50)
+    
+    async def sem_scan(client, sym):
+        async with semaphore:
+            return await scan_coin(client, sym)
+
+    async with httpx.AsyncClient() as client:
+        tasks = [sem_scan(client, sym) for sym in symbols]
+        results = await asyncio.gather(*tasks)
+    
+    # 3. Sonuçları listele
+    found = [r for r in results if r[0] is not None]
+    for sym, sig in found:
+        print(f"✅ Sinyal: {sym} | Strateji: {sig}")
 
 if __name__ == "__main__":
-    run_scanner()
+    asyncio.run(main())
