@@ -12,8 +12,8 @@ warnings.filterwarnings('ignore')
 # ══════════════════════════════════════════════════════════════
 # 📱 TELEGRAM AYARLARI
 # ══════════════════════════════════════════════════════════════
-TELEGRAM_TOKEN = os.environ.get("8872450405:AAGgohIr9AsQV7iaIvd0PCTzTxK2978PUjs", "BURAYA_BOT_TOKEN_YAZ")
-TELEGRAM_CHAT_ID = os.environ.get("-5350107546", "BURAYA_CHAT_ID_YAZ")
+TELEGRAM_TOKEN = os.environ.get("", "BURAYA_BOT_TOKEN_YAZ")
+TELEGRAM_CHAT_ID = os.environ.get("", "BURAYA_CHAT_ID_YAZ")
 
 def send_telegram_message(text):
     if TELEGRAM_TOKEN == "BURAYA_BOT_TOKEN_YAZ":
