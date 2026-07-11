@@ -25,4 +25,4 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
         cd kripto4 # Dosyalarının olduğu klasöre gir
-        python kripto.py
+        python app.py
